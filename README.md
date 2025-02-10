@@ -5,6 +5,7 @@ Google Play: https://play.google.com/store/apps/details?id=com.jakobkempe.lunars
 How to run:
 ```python main.py```
 Sample Output:
+```
 === Grid Solver Console Program ===
 
 Enter grid rows (numbers separated by spaces).
@@ -118,3 +119,4 @@ After move 14 ('left'):
 0 0 0 0
 0 0 0 0
 0 0 0 0
+```
