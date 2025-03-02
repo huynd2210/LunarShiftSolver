@@ -1,0 +1,293 @@
+from flask import Flask, request, render_template_string, redirect, url_for
+from functools import lru_cache
+import sys
+sys.setrecursionlimit(10000)
+
+app = Flask(__name__)
+
+# ------ Solver Functions (from main.py) ------
+
+def parse_grid(grid_str):
+    """
+    Parse a grid string representation into a list-of-lists.
+    Each row should have numbers (0 or 1) separated by spaces.
+    """
+    grid = []
+    for line in grid_str.strip().splitlines():
+        row = [int(cell) for cell in line.split()]
+        grid.append(row)
+    return grid
+
+def grid_to_tuple(grid_list):
+    """Convert a list-of-lists grid into a hashable tuple-of-tuples."""
+    return tuple(tuple(row) for row in grid_list)
+
+def is_target_state(g, target=0):
+    """Return True if every cell in grid g equals the target value (default 0)."""
+    return all(cell == target for row in g for cell in row)
+
+def find_solution(grid, start, num_moves, target=0):
+    """
+    Find a sequence of moves from the given start coordinate (fixed as (0,0) here)
+    so that after num_moves moves (each move flips the landing cell),
+    the grid becomes solved (every cell equals target, default 0).
+    """
+    n = len(grid)
+    m = len(grid[0])
+    directions = {
+        "up": (-1, 0),
+        "down": (1, 0),
+        "left": (0, -1),
+        "right": (0, 1)
+    }
+
+    start_grid = grid_to_tuple(grid)
+
+    @lru_cache(maxsize=None)
+    def dfs(r, c, grid_state, moves_left):
+        if moves_left == 0:
+            return [] if is_target_state(grid_state, target) else None
+
+        current_grid = [list(row) for row in grid_state]
+
+        for move, (dr, dc) in directions.items():
+            nr, nc = r + dr, c + dc
+            if not (0 <= nr < n and 0 <= nc < m):
+                continue
+
+            new_grid = [row[:] for row in current_grid]
+            new_grid[nr][nc] = 1 - new_grid[nr][nc]
+            new_grid_state = grid_to_tuple(new_grid)
+            result = dfs(nr, nc, new_grid_state, moves_left - 1)
+            if result is not None:
+                return [move] + result
+        return None
+
+    return dfs(start[0], start[1], start_grid, num_moves)
+
+def simulate_moves_history(grid, start, move_sequence):
+    """
+    Simulate the move sequence and record each board state.
+    Returns a list of (description, grid_state) tuples.
+    """
+    directions = {
+        "up": (-1, 0),
+        "down": (1, 0),
+        "left": (0, -1),
+        "right": (0, 1)
+    }
+
+    board = [row[:] for row in grid]
+    history = [("Initial board state", [row[:] for row in board])]
+    r, c = start
+    n = len(board)
+    m = len(board[0])
+
+    for step, move in enumerate(move_sequence, start=1):
+        dr, dc = directions[move]
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < n and 0 <= nc < m:
+            r, c = nr, nc
+            board[r][c] = 1 - board[r][c]
+            history.append((f"After move {step} ('{move}')", [row[:] for row in board]))
+        else:
+            history.append((f"Move {step} ('{move}') out-of-bounds (state unchanged)", [row[:] for row in board]))
+    return history
+
+# ------ Flask Routes and Templates ------
+
+# HTML template for the home page form.
+# This version lets the user select the grid size and displays a clickable grid.
+FORM_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Lunar Shift Solver</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2em; }
+      table { border-collapse: collapse; margin-bottom: 1em; }
+      td {
+        width: 40px;
+        height: 40px;
+        border: 1px solid #333;
+        cursor: pointer;
+      }
+      input { padding: 5px; margin: 5px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Lunar Shift Solver</h1>
+    <form method="post" action="{{ url_for('solve') }}" onsubmit="prepareGridData()">
+      <div>
+        <label for="rows">Number of rows:</label>
+        <input type="number" id="rows" name="rows" value="4" min="1" required>
+      </div>
+      <div>
+        <label for="cols">Number of columns:</label>
+        <input type="number" id="cols" name="cols" value="4" min="1" required>
+      </div>
+      <div>
+        <button type="button" onclick="generateGrid()">Generate Grid</button>
+      </div>
+      <br>
+      <div>
+        <p>Click on cells to toggle color (0 = cyan, 1 = purple):</p>
+        <div id="gridContainer">
+          <!-- The grid table will be inserted here -->
+        </div>
+      </div>
+      <br>
+      <div>
+        <label for="moves">Number of moves allowed [default: 15]:</label><br>
+        <input type="number" name="moves" id="moves" placeholder="15">
+      </div>
+      <br>
+      <!-- Hidden input to store grid data -->
+      <input type="hidden" name="grid" id="grid">
+      <button type="submit">Solve</button>
+    </form>
+
+    <script>
+      // Function to generate the grid based on user-selected dimensions.
+      function generateGrid() {
+        var rows = document.getElementById("rows").value;
+        var cols = document.getElementById("cols").value;
+        var gridContainer = document.getElementById("gridContainer");
+        var table = document.createElement("table");
+        table.id = "gridTable";
+
+        for (var i = 0; i < rows; i++) {
+          var tr = document.createElement("tr");
+          for (var j = 0; j < cols; j++) {
+            var td = document.createElement("td");
+            // Set data attribute with default value "0"
+            td.setAttribute("data-value", "0");
+            td.style.backgroundColor = "cyan";
+            // Add click event listener to toggle state
+            td.addEventListener("click", function() {
+              var currentValue = this.getAttribute("data-value");
+              var newValue = currentValue === "0" ? "1" : "0";
+              this.setAttribute("data-value", newValue);
+              this.style.backgroundColor = newValue === "0" ? "cyan" : "purple";
+            });
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        // Clear previous grid (if any) and add the new table.
+        gridContainer.innerHTML = "";
+        gridContainer.appendChild(table);
+      }
+
+      // Generate an initial grid when the page loads.
+      window.onload = generateGrid;
+
+      // Prepare grid data from the clickable table before form submission.
+      function prepareGridData() {
+        var table = document.getElementById("gridTable");
+        var gridData = "";
+        for (var i = 0, row; row = table.rows[i]; i++) {
+          var rowData = [];
+          for (var j = 0, cell; cell = row.cells[j]; j++) {
+            rowData.push(cell.getAttribute("data-value"));
+          }
+          gridData += rowData.join(" ") + "\\n";
+        }
+        document.getElementById("grid").value = gridData.trim();
+      }
+    </script>
+  </body>
+</html>
+"""
+
+# HTML template to display the simulation results.
+# "Try another puzzle" is now at the top.
+RESULT_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Solution Result</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2em; }
+      table { border-collapse: collapse; margin-bottom: 1em; }
+      td {
+        width: 40px;
+        height: 40px;
+        border: 1px solid #333;
+      }
+      a { text-decoration: none; color: blue; }
+    </style>
+  </head>
+  <body>
+    <a href="{{ url_for('home') }}">Try another puzzle</a>
+    <h1>Solution Result</h1>
+    {% if error %}
+      <p style="color: red;">{{ error }}</p>
+    {% else %}
+      {% if solution %}
+        <h2>Sequence of moves:</h2>
+        <p>{{ solution|join(', ') }}</p>
+        <h2>Simulation Steps:</h2>
+        {% for description, grid_state in simulation %}
+          <h3>{{ description }}</h3>
+          <table>
+            {% for row in grid_state %}
+              <tr>
+                {% for cell in row %}
+                  {% if cell == 0 %}
+                    <td style="background-color: cyan;"></td>
+                  {% else %}
+                    <td style="background-color: purple;"></td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </table>
+        {% endfor %}
+      {% else %}
+        <p>No solution found with the provided number of moves.</p>
+      {% endif %}
+    {% endif %}
+  </body>
+</html>
+"""
+
+@app.route("/", methods=["GET"])
+def home():
+    return render_template_string(FORM_TEMPLATE)
+
+@app.route("/solve", methods=["POST"])
+def solve():
+    # Retrieve grid data from the hidden input.
+    grid_str = request.form.get("grid", "").strip()
+    if not grid_str:
+        return render_template_string(RESULT_TEMPLATE, error="Grid data is required!", solution=None)
+
+    try:
+        grid = parse_grid(grid_str)
+    except Exception as e:
+        return render_template_string(RESULT_TEMPLATE, error=f"Error parsing grid: {e}", solution=None)
+
+    # Parse number of moves; default to 15 if not provided or invalid.
+    moves_input = request.form.get("moves", "").strip()
+    try:
+        moves = int(moves_input) if moves_input != "" else 15
+    except ValueError:
+        moves = 15
+
+    # Use default starting position (0,0) and target value (0).
+    start = (0, 0)
+    target = 0
+
+    solution = find_solution(grid, start, moves, target=target)
+
+    if solution is None:
+        return render_template_string(RESULT_TEMPLATE, error=None, solution=None)
+    else:
+        simulation = simulate_moves_history(grid, start, solution)
+        return render_template_string(RESULT_TEMPLATE, error=None, solution=solution, simulation=simulation)
+
+if __name__ == "__main__":
+    app.run(debug=True)
