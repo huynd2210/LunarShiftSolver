@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Solution Result</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2em; }
+      table { border-collapse: collapse; margin-bottom: 1em; }
+      td {
+        width: 40px;
+        height: 40px;
+        border: 1px solid #333;
+      }
+      a { text-decoration: none; color: blue; }
+    </style>
+  </head>
+  <body>
+    <a href="{{ url_for('home') }}">Try another puzzle</a>
+    <h1>Solution Result</h1>
+    {% if error %}
+      <p style="color: red;">{{ error }}</p>
+    {% else %}
+      {% if solution %}
+        <h2>Sequence of moves:</h2>
+        <p>{{ solution|join(', ') }}</p>
+        <h2>Simulation Steps:</h2>
+        {% for description, grid_state in simulation %}
+          <h3>{{ description }}</h3>
+          <table>
+            {% for row in grid_state %}
+              <tr>
+                {% for cell in row %}
+                  {% if cell == 0 %}
+                    <td style="background-color: cyan;"></td>
+                  {% else %}
+                    <td style="background-color: purple;"></td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </table>
+        {% endfor %}
+      {% else %}
+        <p>No solution found with the provided number of moves.</p>
+      {% endif %}
+    {% endif %}
+  </body>
+</html>

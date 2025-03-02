@@ -1,0 +1,44 @@
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite3
+
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+
+# Compiled files
+*.o
+*.so
+*.dll
+*.exe
+
+# Misc
+*.swp
+*.swo
+*.bak
+*.tmp
