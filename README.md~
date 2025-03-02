@@ -11,8 +11,8 @@ How to run:
 ```python app.py```
 
 Flask version:
+
 ![img.png](img.png)
-![solution.png](solution.png)
 Console version:
 
 ```python main.py```

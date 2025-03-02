@@ -1,5 +1,4 @@
 from flask import Flask, request, render_template, redirect, url_for
-from functools import lru_cache
 import sys
 sys.setrecursionlimit(10000)
 
@@ -28,10 +27,15 @@ def is_target_state(g, target=0):
 
 def find_solution(grid, start, num_moves, target=0):
     """
-    Find a sequence of moves from the given start coordinate
-    (fixed as (0,0) here) so that after num_moves moves
-    (each move flips the landing cell), the grid becomes solved
-    (every cell equals target, default 0).
+    Find a sequence of moves from the given start coordinate (fixed as (0,0))
+    so that after num_moves moves (each move flips the landing cell),
+    the grid becomes solved (every cell equals target, default 0).
+
+    This version uses an explicit transposition table to memoize intermediate results.
+    It also prunes search branches where the number of cells not at the target value
+    exceeds the number of moves left (deadend), and prints out:
+      - The total transposition table hits
+      - The total number of branches pruned
     """
     n = len(grid)
     m = len(grid[0])
@@ -43,12 +47,29 @@ def find_solution(grid, start, num_moves, target=0):
     }
 
     start_grid = grid_to_tuple(grid)
+    transposition_table = {}
+    transposition_hits = [0]
+    pruned_branches = [0]  # Counter for deadends pruned
 
-    @lru_cache(maxsize=None)
     def dfs(r, c, grid_state, moves_left):
-        if moves_left == 0:
-            return [] if is_target_state(grid_state, target) else None
+        key = (r, c, grid_state, moves_left)
+        if key in transposition_table:
+            transposition_hits[0] += 1
+            return transposition_table[key]
 
+        if moves_left == 0:
+            result = [] if is_target_state(grid_state, target) else None
+            transposition_table[key] = result
+            return result
+
+        # Deadend check: count the number of cells not at the target value.
+        num_incorrect = sum(1 for row in grid_state for cell in row if cell != target)
+        if num_incorrect > moves_left:
+            pruned_branches[0] += 1
+            transposition_table[key] = None
+            return None
+
+        # Convert the grid state tuple back into a mutable list-of-lists.
         current_grid = [list(row) for row in grid_state]
 
         for move, (dr, dc) in directions.items():
@@ -56,15 +77,24 @@ def find_solution(grid, start, num_moves, target=0):
             if not (0 <= nr < n and 0 <= nc < m):
                 continue
 
+            # Copy the current grid state.
             new_grid = [row[:] for row in current_grid]
+            # Flip the value at the new cell.
             new_grid[nr][nc] = 1 - new_grid[nr][nc]
             new_grid_state = grid_to_tuple(new_grid)
+
             result = dfs(nr, nc, new_grid_state, moves_left - 1)
             if result is not None:
-                return [move] + result
+                transposition_table[key] = [move] + result
+                return transposition_table[key]
+
+        transposition_table[key] = None
         return None
 
-    return dfs(start[0], start[1], start_grid, num_moves)
+    solution = dfs(start[0], start[1], start_grid, num_moves)
+    print(f"Transposition table hits: {transposition_hits[0]}")
+    print(f"Branches pruned (deadends): {pruned_branches[0]}")
+    return solution
 
 def simulate_moves_history(grid, start, move_sequence):
     """
